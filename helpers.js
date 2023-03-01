@@ -43,8 +43,38 @@ const getContract = async(provider, address = pundiAddress) => {
     }
 }
 
+const getInfo = async(provider, tokensList) => {
+    const tokenAddressIndex = 0;
+    const tokenAcronymIndex = 2;
+    const tokenUnits = 3;
+
+    let results = await Promise.all(
+        tokensList.map(async(token) => {
+            const blockNumber = await provider.getBlockNumber();
+            const { timestamp } = await provider.getBlock(blockNumber);
+            const coinContract = await getContract(provider, token[tokenAddressIndex]);
+
+            if(coinContract) {
+                const balance = await getBalance(coinContract, token[tokenUnits]);
+                
+                return {
+                    blockHeight: blockNumber,
+                    timestamp,
+                    balance,
+                    token: token[tokenAcronymIndex]
+                }
+            }
+
+            return false;   
+        })
+    );
+
+    // remove unavailable results (non-ERC20 or failed data retrieval)
+    return results.filter((result) => result);
+}
+
 module.exports = {
-    getBalance,
     getProvider,
     getContract,
+    getInfo
 }

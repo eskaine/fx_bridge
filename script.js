@@ -1,39 +1,48 @@
-const { getBalance, getProvider, getContract } = require("./helpers");
+const { Console } = require("console");
+const fs = require("fs");
+const { getInfo, getProvider, getContract } = require("./helpers");
 
 const run = async() => {
-    const tokenAddressIndex = 0;
-    const tokenAcronymIndex = 2;
-    const tokenUnits = 3;
-    const provider = getProvider();
-    const contract = await getContract(provider);
-    const tokensList = await contract.getBridgeTokenList();
+    console.log("Running script...");
+    const intervalTime = 5000;
+    const timeout = 60000;
+    const file = "./fx-bridge token supply.csv";
+    const headerLine = "Batch, Block Height, Timestamp, Balance, Token\n";
 
-    let results = await Promise.all(
-        tokensList.map(async(token) => {
-            const blockNumber = await provider.getBlockNumber();
-            const { timestamp } = await provider.getBlock(blockNumber);
-            const coinContract = await getContract(provider, token[tokenAddressIndex]);
+    try {
+        console.log("Fetching tokens list...");
+        const provider = getProvider();
+        const contract = await getContract(provider);
+        const tokensList = await contract.getBridgeTokenList();
+        fs.truncateSync(file,  0);
+        fs.appendFileSync(file,  headerLine);
 
-            if(coinContract) {
-                const balance = await getBalance(coinContract, token[tokenUnits]);
-                
-                return {
-                    blockHeight: blockNumber,
-                    balance,
-                    timestamp,
-                    token: token[tokenAcronymIndex]
-                }
+        let batchCount = 0;
+    
+        const interval = setInterval(async() => {
+            batchCount++;
+            const tokensInfo = await getInfo(provider, tokensList);
+            let line = "";
+    
+            console.log(`\nGenerating batch ${batchCount}...`)
+            for (let i = 0; i < tokensInfo.length; i++) {
+                const {blockHeight, timestamp, balance, token} = tokensInfo[i];
+                line += `${batchCount},${timestamp},${blockHeight},${token},${balance}\n`;
+
+                const date = new Date(timestamp);
+                console.log(`${date.toLocaleString()} - Block ${blockHeight}, ${token} ${balance}`)
             }
 
-            return false;   
-        })
-    );
+            fs.appendFileSync(file, line);
 
-    // remove unavailable results (non-ERC20 or failed data retrieval)
-    results = results.filter((result) => result);
-
-    console.log(results);
+            if(intervalTime * batchCount >= timeout) {
+                console.log("\nDone!")
+                return clearInterval(interval);
+            }
+        }, intervalTime);
+    } catch (error) {
+        console.error(error);
+    }
 }
 
 run();
-
